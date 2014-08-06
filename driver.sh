@@ -4,8 +4,6 @@
 # The environment
 SLAVE_IMAGE=srisankaran/jmeter-server
 MASTER_IMAGE=srisankaran/jmeter
-SLAVE_CIDFILE=slave-cids.txt
-MASTER_CIDFILE=master-cid.txt
 DATADIR=
 JMX_SCRIPT=
 CWD=$(readlink -f .)
@@ -53,7 +51,6 @@ echo "DATADIR=${DATADIR}"
 echo "JMX_SCRIPT=${JMX_SCRIPT}"
 echo "CWD=${CWD}"
 echo "NUM_SERVERS=${NUM_SERVERS}"
-exit 9
 
 #
 # Set a working directory.
@@ -68,18 +65,19 @@ mkdir -p ${CWD}/logs
 n=1
 while [[ ${n} -lt ${NUM_SERVERS} ]]
 do
-  mkdir -p logs/${n}
-	HOST_READ_PORT=$((${HOST_READ_PORT} + 1))
-	HOST_WRITE_PORT=$((${HOST_WRITE_PORT} + 1))
+	LOGDIR=${CWD}/logs/${n}
+  mkdir -p ${LOGDIR}
 
-	docker run --cidfile ${SLAVE_CIDFILE} \
+	docker run --cidfile ${LOGDIR}/cid \
 				-d \
 				-p 0.0.0.0:${HOST_READ_PORT}:1099 \
 				-p 0.0.0.0:${HOST_WRITE_PORT}:60000 \
-				-v ${CWD}/logs/${n}:/logs \
+				-v ${LOGDIR}:/logs \
 				-v ${DATADIR}:/scripts \
 				${SLAVE_IMAGE}
   n=$((${n} + 1))
+	HOST_READ_PORT=$((${HOST_READ_PORT} +  2))
+	HOST_WRITE_PORT=$((${HOST_WRITE_PORT} + 2))
 done
 
 #
@@ -97,11 +95,12 @@ done
 
 #
 # Start the jmeter (client) container and connect to the servers
-mkdir -p ${CWD}/logs/client
-docker run --cidfile ${MASTER_CIDFILE} -it \
+LOGDIR=${CWD}/logs/client
+mkdir -p ${LOGDIR}
+docker run --cidfile ${LOGDIR}/cid \
 				-d \
-				-v ${CWD}/logs/client:/logs \
-				${MASTER_IMAGE} -n -t ${JMX_SCRIPT} -R${SERVER_IPS}
+				-v ${LOGDIR}:/logs \
+				${MASTER_IMAGE} -n -t ${JMX_SCRIPT} -l ${LOGDIR}/jtl.jtl -LDEBUG -R${SERVER_IPS}
 
 # TODO Client must somehow notify host of job completion
 
@@ -110,10 +109,3 @@ docker run --cidfile ${MASTER_CIDFILE} -it \
 # TODO Shutdown the servers
 
 # TODO Clean up dirs
-# TODO
-# - Client image to take a configurable list of server IPs
-# - Client image to expose a volume in which it will write the JTL.
-#   This will then be mapped to a directory on the host so that we
-#   can have access to the JTL after the container goes away.
-# - Client image must have an init script that fires off jmeter
-# - Server image must accept a datadir
