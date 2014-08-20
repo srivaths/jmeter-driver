@@ -13,8 +13,8 @@
 
 #
 # The environment
-SLAVE_IMAGE=srisankaran/jmeter-server
-MASTER_IMAGE=srisankaran/jmeter
+SLAVE_IMAGE=ssankara/jmeter-server
+MASTER_IMAGE=ssankara/jmeter
 DATADIR=
 JMX_SCRIPT=
 CWD=$(readlink -f .)
@@ -25,18 +25,22 @@ HOST_READ_PORT=49501
 function validate_env() {
 	if [[ ! -d ${CWD} ]] ; then
 	  echo "The working directory '${CWD}' does not exist"
+		usage
 		exit 1
 	fi
 	if [[ ! -d ${DATADIR} ]] ; then
 	  echo "The data directory '${DATADIR}' does not exist"
+		usage
 		exit 2
 	fi
 	if [[ ! -f ${JMX_SCRIPT} ]] ; then
 	  echo "The script file '${JMX_SCRIPT}' does not exist"
+		usage
 		exit 3
 	fi
 	if [[ ${NUM_SERVERS} -lt 1 ]]; then
 		echo "Must start at least 1 JMX server."
+		usage
 		exit 4
 	fi
 }
@@ -92,10 +96,12 @@ function server_ips() {
 }
 
 function usage() {
-	echo "-d      The working directory"
+  echo "Usage:"
+	echo "-d      The data directory for data files used by the JMX script."
 	echo "-h      This help message"
 	echo "-n      The required number of servers"
 	echo "-s      The JMX script file"
+	echo "-w      The working directory. Logs are relative to it."
 }
 
 # ------------- Show starts here -------------
