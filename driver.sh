@@ -16,8 +16,8 @@
 #          INFO  - jmeter.reporters.ResultCollector: Shutdown hook ended
 #
 #        Note the assumed log level for this recipe to work.
-#
 # TODO: Cleanup - Not a biggie.  Just watiting on shutdown to be done.
+# TODO: Allow image names to be specified on the command line.
 # TODO: Rewrite this whole thing in golang
 
 #
