@@ -9,7 +9,16 @@
 #       The client will connect to the servers created in step 
 #       (i) and trigger the test script that is provided.
 #  TODO: Shutdown
+#        Tips -- Look for the following in the client logs
+# 
+#          INFO - Shutdown hook started
+#          DEBUG - jmeter.reporters.ResultCollector: Flushing: /logs/jtl.jtl
+#          INFO  - jmeter.reporters.ResultCollector: Shutdown hook ended
 #
+#        Note the assumed log level for this recipe to work.
+#
+# TODO: Cleanup - Not a biggie.  Just watiting on shutdown to be done.
+# TODO: Rewrite this whole thing in golang
 
 #
 # The environment
@@ -46,9 +55,9 @@ function validate_env() {
 }
 
 function display_env() {
-	echo "DATADIR=${DATADIR}"
-	echo "JMX_SCRIPT=${JMX_SCRIPT}"
-	echo "CWD=${CWD}"
+	echo "    DATADIR=${DATADIR}"
+	echo " JMX_SCRIPT=${JMX_SCRIPT}"
+	echo "        CWD=${CWD}"
 	echo "NUM_SERVERS=${NUM_SERVERS}"
 }
 
@@ -56,9 +65,11 @@ function start_servers() {
 	n=1
 	while [[ ${n} -le ${NUM_SERVERS} ]]
 	do
+		# Create a log directory for the server
 		LOGDIR=${CWD}/logs/${n}
 	  mkdir -p ${LOGDIR}
 	
+		# Start the server container
 		docker run --cidfile ${LOGDIR}/cid \
 					-d \
 					-p 0.0.0.0:${HOST_READ_PORT}:1099 \
@@ -71,6 +82,8 @@ function start_servers() {
 			echo "Error '${err}' while starting a jmeter server. Quitting"
 			exit ${err}
 		fi
+
+		# Prepare for next server
 	  n=$((${n} + 1))
 		HOST_READ_PORT=$((${HOST_READ_PORT} +  2))
 		HOST_WRITE_PORT=$((${HOST_WRITE_PORT} + 2))
@@ -95,6 +108,24 @@ function server_ips() {
 	done
 }
 
+#
+# Get confirmation
+function confirm() {
+	echo "Here's what we've got..."
+	echo "---------------------------------"
+	display_env
+	echo "---------------------------------"
+	echo "Does this look OK?"
+	select yesorno in "Yes" "No"
+	do
+		case ${yesorno} in
+			Yes ) return ;;
+			No ) exit 6;;
+		esac
+	done
+}
+
+#
 function usage() {
   echo "Usage:"
 	echo "-d      The data directory for data files used by the JMX script."
@@ -130,6 +161,10 @@ shift $((OPTIND -1))
 validate_env
 
 #
+# Make sure the user is satisfied with the settings
+confirm
+
+#
 # Set a working directory.
 cd ${CWD}
 
@@ -145,7 +180,6 @@ if [[ -d ${CWD}/logs ]] ; then
 fi
 mkdir -p ${CWD}/logs
 
-#
 # Start the specified number of jmeter-server containers
 start_servers
 
