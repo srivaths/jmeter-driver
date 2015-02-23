@@ -22,18 +22,18 @@
 
 #
 # The environment
-SLAVE_IMAGE=ssankara/jmeter-server
-MASTER_IMAGE=ssankara/jmeter
+SERVER_IMAGE=ssankara/jmeter-server
+CLIENT_IMAGE=ssankara/jmeter
 DATADIR=
 JMX_SCRIPT=
-CWD=$(readlink -f .)
+WORK_DIR=$(readlink -f /tmp)
 NUM_SERVERS=1
 HOST_WRITE_PORT=49500
 HOST_READ_PORT=49501
 
 function validate_env() {
-	if [[ ! -d ${CWD} ]] ; then
-	  echo "The working directory '${CWD}' does not exist"
+	if [[ ! -d ${WORK_DIR} ]] ; then
+	  echo "The working directory '${WORK_DIR}' does not exist"
 		usage
 		exit 1
 	fi
@@ -57,7 +57,7 @@ function validate_env() {
 function display_env() {
 	echo "    DATADIR=${DATADIR}"
 	echo " JMX_SCRIPT=${JMX_SCRIPT}"
-	echo "        CWD=${CWD}"
+	echo "   WORK_DIR=${WORK_DIR}"
 	echo "NUM_SERVERS=${NUM_SERVERS}"
 }
 
@@ -66,7 +66,7 @@ function start_servers() {
 	while [[ ${n} -le ${NUM_SERVERS} ]]
 	do
 		# Create a log directory for the server
-		LOGDIR=${CWD}/logs/${n}
+		LOGDIR=${WORK_DIR}/logs/${n}
 	  mkdir -p ${LOGDIR}
 	
 		# Start the server container
@@ -76,7 +76,8 @@ function start_servers() {
 					-p 0.0.0.0:${HOST_WRITE_PORT}:60000 \
 					-v ${LOGDIR}:/logs \
 					-v ${DATADIR}:/input_data \
-					${SLAVE_IMAGE} 1>/dev/null 2>&1
+					--name jmeter-server-${n} \
+					${SERVER_IMAGE} 1>/dev/null 2>&1
 		err=$?
 		if [[ ${err} -ne 0 ]] ; then
 			echo "Error '${err}' while starting a jmeter server. Quitting"
@@ -94,7 +95,7 @@ function server_ips() {
 	#
 	# CAUTION: The logic here assumes that we want to use all 
 	# active jmeter servers.
-	for pid in $(docker ps | grep ${SLAVE_IMAGE} | awk '{print $1}')
+	for pid in $(docker ps | grep ${SERVER_IMAGE} | awk '{print $1}')
 	do
 	
 	  # Get the IP for the current pid
@@ -115,19 +116,16 @@ function confirm() {
 	echo "---------------------------------"
 	display_env
 	echo "---------------------------------"
-	echo "Does this look OK?"
-	select yesorno in "Yes" "No"
-	do
-		case ${yesorno} in
-			Yes ) return ;;
-			No ) exit 6;;
-		esac
-	done
+	read -n 1 -e -p "Does this look OK?y/[n]: " yesno
+	case ${yesno} in
+		y) return ;;
+		n) exit 6;;
+	esac
 }
 
 #
 function usage() {
-  echo "Usage:"
+  echo "Usage: $0 [-d data-dir] [-n num-jmeter-servers] [-s jmx] [-w work-dir]"
 	echo "-d      The data directory for data files used by the JMX script."
 	echo "-h      This help message"
 	echo "-n      The required number of servers"
@@ -138,7 +136,7 @@ function usage() {
 # ------------- Show starts here -------------
 
 #
-# Getopts to read - datadir, CWD, count of servers, script dir
+# Getopts to read - datadir, WORK_DIR, count of servers, script dir
 # script -d data-dir -s script-dir -w work-dir -n num-servers
 while getopts :d:hn:s:w: opt
 do
@@ -147,7 +145,7 @@ do
 		h) usage && exit 0 ;;
 		n) NUM_SERVERS=${OPTARG} ;;
 		s) JMX_SCRIPT=$(readlink -f ${OPTARG}) ;;
-		w) CWD=$(readlink -f ${OPTARG}) ;;
+		w) WORK_DIR=$(readlink -f ${OPTARG}) ;;
 		:) echo "The -${OPTARG} option requires a parameter"
 			 exit 1 ;;
 		?) echo "Invalid option: -${OPTARG}"
@@ -166,39 +164,43 @@ confirm
 
 #
 # Set a working directory.
-cd ${CWD}
+cd ${WORK_DIR}
 
 #
 # Create a place for all the log files
-if [[ -d ${CWD}/logs ]] ; then
-	if [[ -d ${CWD}/logs.bak ]] ; then
+if [[ -d ${WORK_DIR}/logs ]] ; then
+	if [[ -d ${WORK_DIR}/logs.bak ]] ; then
 		echo "Unable to backup existing logs dir (backup dir exists)."
 		exit 5
 	else
-		mv ${CWD}/logs ${CWD}/logs.bak
+		mv ${WORK_DIR}/logs ${WORK_DIR}/logs.bak
 	fi
 fi
-mkdir -p ${CWD}/logs
+mkdir -p ${WORK_DIR}/logs
 
 # Start the specified number of jmeter-server containers
+echo "Starting servers..."
 start_servers
 
 #
 # Get the IP addresses for the servers
 SERVER_IPS=
 server_ips
+echo "Server IPs are: ${SERVER_IPS}"
 # SERVER_IPS will now be string of the form 1.2.3.4,9.8.7.6
 
 #
 # Start the jmeter (client) container and connect to the servers
-LOGDIR=${CWD}/logs/client
+echo "Starting client..."
+LOGDIR=${WORK_DIR}/logs/client
 mkdir -p ${LOGDIR}
 docker run --cidfile ${LOGDIR}/cid \
 				-d \
 				-v ${LOGDIR}:/logs \
 				-v ${DATADIR}:/input_data \
 				-v $(dirname ${JMX_SCRIPT}):/scripts \
-				${MASTER_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/jtl.jtl -LDEBUG -R${SERVER_IPS}
+				--name jmeter-client \
+				${CLIENT_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/jtl.jtl -LDEBUG -R${SERVER_IPS}
 
 # TODO Client must somehow notify host of job completion
 
