@@ -8,17 +8,9 @@
 #  ii.  Create a Docker container for the JMeter client (master).
 #       The client will connect to the servers created in step 
 #       (i) and trigger the test script that is provided.
-#  TODO: Shutdown
 #        Tips -- Look for the following in the client logs
 # 
-#          INFO - Shutdown hook started
-#          DEBUG - jmeter.reporters.ResultCollector: Flushing: /logs/jtl.jtl
-#          INFO  - jmeter.reporters.ResultCollector: Shutdown hook ended
-#
-#        Note the assumed log level for this recipe to work.
 # TODO: Cleanup - Not a biggie.  Just watiting on shutdown to be done.
-# TODO: Allow image names to be specified on the command line.
-# TODO: Rewrite this whole thing in golang
 
 #
 # The environment
@@ -30,6 +22,10 @@ WORK_DIR=$(readlink -f /tmp)
 NUM_SERVERS=1
 HOST_WRITE_PORT=49500
 HOST_READ_PORT=49501
+# Name of the JMeter client container
+CLIENT_NAME=jmeter-client
+# Prefix of all JMeter server containers.  Actual name will be PREFIX-#
+SERVER_NAME_PREFIX=jmeter-server
 
 function validate_env() {
 	if [[ ! -d ${WORK_DIR} ]] ; then
@@ -124,6 +120,53 @@ function confirm() {
 }
 
 #
+# Wait for client to terminate
+function wait_for_client() {
+	echo "Checking on JMeter client status every 30 secs..."
+	CLIENT_CID=$(cat ${LOGDIR}/cid)
+
+	# Wait for client CID to clear
+	while :
+	do
+		docker ps --no-trunc | grep ${CLIENT_CID} 2>/dev/null 1>&2
+		if [[ $? -ne 0 ]]; then
+			echo
+			echo "JMeter client done"
+			break
+		fi
+		echo -n "."
+		sleep 30
+	done
+}
+
+#
+# Stop servers
+function stop_servers() {
+	echo "Stopping all (${NUM_SERVERS}) JMeter servers..."
+  n=1
+	while [[ ${n} -le ${NUM_SERVERS} ]]
+	do
+		docker stop ${SERVER_NAME_PREFIX}-${n}
+		n=$((${n}+1))
+	done
+	
+}
+
+#
+# Remove all stopped containers
+function remove_containers() {
+	echo "Removing containers..."
+	docker rm ${CLIENT_NAME}
+	n=1
+	while [[ ${n} -le ${NUM_SERVERS} ]]
+	do
+		docker rm ${SERVER_NAME_PREFIX}-${n}
+		n=$((${n}+1))
+	done
+}
+
+#
+# Le usage
 function usage() {
   echo "Usage: $0 [-d data-dir] [-n num-jmeter-servers] [-s jmx] [-w work-dir]"
 	echo "-d      The data directory for data files used by the JMX script."
@@ -202,10 +245,11 @@ docker run --cidfile ${LOGDIR}/cid \
 				--name jmeter-client \
 				${CLIENT_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/jtl.jtl -LDEBUG -R${SERVER_IPS}
 
-# TODO Client must somehow notify host of job completion
+# Shutdown the client
+wait_for_client
 
-# TODO Shutdown the client
+# Shutdown the servers
+stop_servers
 
-# TODO Shutdown the servers
-
-# TODO Clean up dirs
+# Clean up
+remove_containers
