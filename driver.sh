@@ -26,6 +26,7 @@ HOST_READ_PORT=49501
 CLIENT_NAME=jmeter-client
 # Prefix of all JMeter server containers.  Actual name will be PREFIX-#
 SERVER_NAME_PREFIX=jmeter-server
+JTL_FILE=jtl.jtl
 
 function validate_env() {
 	if [[ ! -d ${WORK_DIR} ]] ; then
@@ -206,19 +207,19 @@ validate_env
 confirm
 
 #
-# Set a working directory.
+# Set a working directory
+#  - It will be the specified-work-dir/current-process-id
 cd ${WORK_DIR}
+if [[ -d $$ ]]
+then
+	echo "Work directory (${WORK_DIR}/$$) already exists.  Quitting."
+	exit 7
+fi
+mkdir $$
+WORK_DIR=${WORK_DIR}/$$
 
 #
 # Create a place for all the log files
-if [[ -d ${WORK_DIR}/logs ]] ; then
-	if [[ -d ${WORK_DIR}/logs.bak ]] ; then
-		echo "Unable to backup existing logs dir (backup dir exists)."
-		exit 5
-	else
-		mv ${WORK_DIR}/logs ${WORK_DIR}/logs.bak
-	fi
-fi
 mkdir -p ${WORK_DIR}/logs
 
 # Start the specified number of jmeter-server containers
@@ -243,7 +244,7 @@ docker run --cidfile ${LOGDIR}/cid \
 				-v ${DATADIR}:/input_data \
 				-v $(dirname ${JMX_SCRIPT}):/scripts \
 				--name jmeter-client \
-				${CLIENT_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/jtl.jtl -LDEBUG -R${SERVER_IPS}
+				${CLIENT_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/${JTL_FILE} -LDEBUG -R${SERVER_IPS}
 
 # Shutdown the client
 wait_for_client
@@ -253,3 +254,5 @@ stop_servers
 
 # Clean up
 remove_containers
+
+echo "Please see ${LOGDIR}/${JTL_FILE} for the results of the run"
