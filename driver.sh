@@ -63,7 +63,7 @@ function start_servers() {
 	while [[ ${n} -le ${NUM_SERVERS} ]]
 	do
 		# Create a log directory for the server
-		LOGDIR=${WORK_DIR}/logs/${n}
+		LOGDIR=${WORK_DIR}/${SERVER_NAME_PREFIX}-${n}
 	  mkdir -p ${LOGDIR}
 	
 		# Start the server container
@@ -74,7 +74,7 @@ function start_servers() {
 					-v ${LOGDIR}:/logs \
 					-v ${DATADIR}:/input_data \
 					--name jmeter-server-${n} \
-					${SERVER_IMAGE} 1>/dev/null 2>&1
+					${SERVER_IMAGE} 2>/dev/null 1>&2
 		err=$?
 		if [[ ${err} -ne 0 ]] ; then
 			echo "Error '${err}' while starting a jmeter server. Quitting"
@@ -124,6 +124,7 @@ function confirm() {
 # Wait for client to terminate
 function wait_for_client() {
 	echo "Checking on JMeter client status every 30 secs..."
+	echo "Logs etc. can be found in sub-directories of ${WORK_DIR}"
 	CLIENT_CID=$(cat ${LOGDIR}/cid)
 
 	# Wait for client CID to clear
@@ -218,10 +219,6 @@ fi
 mkdir $$
 WORK_DIR=${WORK_DIR}/$$
 
-#
-# Create a place for all the log files
-mkdir -p ${WORK_DIR}/logs
-
 # Start the specified number of jmeter-server containers
 echo "Starting servers..."
 start_servers
@@ -236,7 +233,7 @@ echo "Server IPs are: ${SERVER_IPS}"
 #
 # Start the jmeter (client) container and connect to the servers
 echo "Starting client..."
-LOGDIR=${WORK_DIR}/logs/client
+LOGDIR=${WORK_DIR}/client
 mkdir -p ${LOGDIR}
 docker run --cidfile ${LOGDIR}/cid \
 				-d \
@@ -244,10 +241,15 @@ docker run --cidfile ${LOGDIR}/cid \
 				-v ${DATADIR}:/input_data \
 				-v $(dirname ${JMX_SCRIPT}):/scripts \
 				--name jmeter-client \
-				${CLIENT_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/${JTL_FILE} -LDEBUG -R${SERVER_IPS}
+				${CLIENT_IMAGE} -n -t /scripts/$(basename ${JMX_SCRIPT}) -l /logs/${JTL_FILE} -LDEBUG -R${SERVER_IPS} 2>/dev/null 1>&2
 
-# Shutdown the client
-wait_for_client
+err=$?
+if [[ ${err} -ne 0 ]] ; then
+	echo "Error '${err}' while starting the Jmeter client. Shutting down servers & quitting."
+	exit ${err}
+else
+	wait_for_client
+fi
 
 # Shutdown the servers
 stop_servers
@@ -255,4 +257,6 @@ stop_servers
 # Clean up
 remove_containers
 
-echo "Please see ${LOGDIR}/${JTL_FILE} for the results of the run"
+if [[ ${err} -ne 0 ]] ; then
+	echo "Please see ${LOGDIR}/${JTL_FILE} for the results of the run"
+fi
