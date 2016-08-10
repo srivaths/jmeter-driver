@@ -14,8 +14,8 @@
 
 #
 # The environment
-SERVER_IMAGE=ssankara/jmeter-server
-CLIENT_IMAGE=ssankara/jmeter
+SERVER_IMAGE=MarynaQA/jmeter-server
+CLIENT_IMAGE=MarynaQA/jmeter
 DATADIR=
 JMX_SCRIPT=
 WORK_DIR=$(readlink -f /tmp)
